@@ -116,6 +116,7 @@ $ docker run --env-file setup-env.txt -v ~/.aws:/root/.aws \
     "Effect": "Allow",
     "Action": [
        "dynamodb:PutItem",
+       "dynamodb:Query",
        "dynamodb:UpdateItem"
     ],
     "Resource": [
