@@ -70,46 +70,16 @@ table.
 
 In this example, credentials for an IAM user with administrative privileges 
 for an account have been saved in a
-[profile named `admin`](http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html#cli-multiple-profiles)
+[profile named `default`](http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html#cli-multiple-profiles)
 to setup `ecs-secrets`:
 ```bash
 $ cat << EOF > setup-env.txt
 AWS_REGION=us-west-2
-AWS_PROFILE=admin
+AWS_PROFILE=default
 AWS_SHARED_CREDENTIALS_FILE=/root/.aws/credentials
 EOF
-
-$ docker run --env-file setup-env.txt -v ~/.aws:/root/.aws \
-    amazon/amazon-ecs-secrets setup \
-    --application-name  cryptex \
-    --create-principal arn:aws:iam::123456789012:role/SecretsAdmin \
-    --fetch-role arn:aws:iam::123456789012:role/MyApplicationRole
-
-2016-10-29T15:35:06Z [INFO] Unable to describe stack: ECS-Secrets-cryptex, creating a new one
-2016-10-29T15:36:23Z [INFO] Secrets are stored in the table: arn:aws:dynamodb:us-west-2:123456789012:table/ECS-Secrets-cryptex-Secrets
-2016-10-29T15:36:23Z [INFO] Update 'arn:aws:iam::123456789012:role/MyApplicationRole' to provide read access for this table by updating the policy statement with: {
-    "Effect": "Allow",
-    "Action": [
-	   "dynamodb:Query",
-	    "dynamodb:GetItem"
-    ],
-    "Resource": [
-	   "arn:aws:dynamodb:us-west-2:123456789012:table/ECS-Secrets-cryptex-Secrets"
-    ]
-}
-2016-10-29T15:36:23Z [INFO] Update 'arn:aws:iam::123456789012:role/SecretsAdmin' to provide write access for this table by updating the policy statement with: {
-    "Effect": "Allow",
-    "Action": [
-	   "dynamodb:PutItem",
-	    "dynamodb:UpdateItem"
-    ],
-    "Resource": [
-	   "arn:aws:dynamodb:us-west-2:123456789012:table/ECS-Secrets-cryptex-Secrets"
-    ]
-}
-2016-10-29T15:36:28Z [INFO] Setup complete
 ```
-This command deploys up a Cloudformation stack named `ECS-Secrets-cryptex`,
+The following command deploys up a Cloudformation stack named `ECS-Secrets-cryptex`,
 which creates:
 
 * A DynamoDB table named `ECS-Secrets-cryptex-Secrets`
@@ -122,6 +92,111 @@ which creates:
 Note that you can use Task IAM roles to grant `access` permissions to
 Tasks. You can read more about creating an IAM Role for your Task
 [here](http://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html#create_task_iam_policy_and_role).
+
+```bash
+$ docker run --env-file setup-env.txt -v ~/.aws:/root/.aws \
+    amazon/amazon-ecs-secrets setup \
+    --application-name  cryptex \
+    --create-principal arn:aws:iam::123456789012:role/SecretsAdmin \
+    --fetch-role arn:aws:iam::123456789012:role/MyApplicationRole
+
+2016-10-29T15:35:06Z [INFO] Unable to describe stack: ECS-Secrets-cryptex, creating a new one
+2016-10-29T15:36:23Z [INFO] Secrets are stored in the table: arn:aws:dynamodb:us-west-2:123456789012:table/ECS-Secrets-cryptex-Secrets
+2016-10-29T15:36:23Z [INFO] Update 'arn:aws:iam::123456789012:role/MyApplicationRole' to provide read access for this table by updating the policy statement with: {
+    "Effect": "Allow",
+    "Action": [
+       "dynamodb:Query",
+       "dynamodb:GetItem"
+    ],
+    "Resource": [
+       "arn:aws:dynamodb:us-west-2:123456789012:table/ECS-Secrets-cryptex-Secrets"
+    ]
+}
+2016-10-29T15:36:23Z [INFO] Update 'arn:aws:iam::123456789012:role/SecretsAdmin' to provide write access for this table by updating the policy statement with: {
+    "Effect": "Allow",
+    "Action": [
+       "dynamodb:PutItem",
+       "dynamodb:UpdateItem"
+    ],
+    "Resource": [
+       "arn:aws:dynamodb:us-west-2:123456789012:table/ECS-Secrets-cryptex-Secrets"
+    ]
+}
+2016-10-29T15:36:28Z [INFO] Setup complete
+```
+
+Update the write and read policies as per the output of the command. This is **critical** to
+provide the necessary permissions to the `admin` and the `application` roles to write and
+read secrets from the DynamoDB table.
+
+An example of doing the same from the CLI is provided next:
+
+Example: Updating the `admin` role:
+```bash
+$ cat << EOF > write-policy.json
+{
+    "Version": "2012-10-17",
+    "Statement" : [{
+        "Effect": "Allow",
+        "Action": [
+            "dynamodb:PutItem",
+            "dynamodb:Query",
+            "dynamodb:UpdateItem"
+        ],
+        "Resource": [
+            "arn:aws:dynamodb:us-west-2:123456789012:table/ECS-Secrets-cryptex-Secrets"
+        ]
+    }]
+}
+EOF
+
+$ aws --region us-west-2 iam create-policy --policy-name ECS-Secrets-cryptex-Secrets-write --policy-document file://write-policy.json
+{
+    "Policy": {
+        "PolicyName": "ECS-Secrets-cryptex-Secrets-write",
+        "CreateDate": "...",
+        ...
+        "Path": "/",
+        "Arn": "arn:aws:iam::123456789012:policy/ECS-Secrets-cryptex-Secrets-write",
+        "UpdateDate": "..."
+    }
+}
+
+$ aws --region us-west-2 iam attach-role-policy --role-name SecretsAdmin --policy-arn arn:aws:iam::123456789012:policy/ECS-Secrets-cryptex-Secrets-write
+```
+
+Example: Updating the `application` role:
+```bash
+$ cat << EOF > read-policy.json
+{
+    "Version": "2012-10-17",
+    "Statement" : [{
+        "Effect": "Allow",
+        "Action": [
+            "dynamodb:Query",
+            "dynamodb:GetItem"
+        ],
+    "Resource": [
+        "arn:aws:dynamodb:us-west-2:123456789012:table/ECS-Secrets-cryptex-Secrets"
+    ]
+}]
+}
+EOF
+
+$ aws --region us-west-2 iam create-policy --policy-name ECS-Secrets-cryptex-Secrets-read --policy-document file://read-policy.json
+{
+    "Policy": {
+        "PolicyName": "ECS-Secrets-cryptex-Secrets-read",
+        "CreateDate": "...",
+        ...
+        "Path": "/",
+        "Arn": "arn:aws:iam::123456789012:policy/ECS-Secrets-cryptex-Secrets-read",
+        "UpdateDate": "..."
+    }
+}
+
+$ aws --region us-west-2 iam attach-role-policy --role-name MyApplicationRole --policy-arn arn:aws:iam::123456789012:policy/ECS-Secrets-cryptex-Secrets-read
+```
 
 ## Creating Secrets
 The following diagram illustrates the workflow for creating a secret.
@@ -203,6 +278,12 @@ posting a request to create the secret. The task is registered with the the
   ],
   "family": "ecs-secrets-create"
 }
+```
+
+On the instance, the password file has the following contents:
+```bash
+$ cat /tmp/secrets/password.txt
+{"payload":"123456"}
 ```
 
 If you specified an IAM user as argument to `--create-principal` instead of an
@@ -292,6 +373,15 @@ the secret store:
   ],
   "family": "ecs-secrets-fetch"
 }
+```
+
+On the instance, the output of the `curl` container shows the following:
+```bash
+$ docker logs 9b8a8495ba99
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100    64  100    64    0     0    558      0 --:--:-- --:--:-- --:--:--   566
+{"name":"password","serial":1,"payload":"123456","active":true}
 ```
 
 ## Revoking Secrets

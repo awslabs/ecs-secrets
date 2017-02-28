@@ -44,6 +44,7 @@ const (
     "Effect": "Allow",
     "Action": [
 	"dynamodb:PutItem",
+	"dynamodb:Query",
 	"dynamodb:UpdateItem"
     ],
     "Resource": [
